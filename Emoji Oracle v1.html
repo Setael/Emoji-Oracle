@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Emoji Oracle — Character Design Tool</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@twemoji/api@latest/dist/twemoji.min.js" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: #0c0c0f;
+      color: #f0ede8;
+      font-family: 'Georgia', 'Times New Roman', serif;
+      overflow-x: hidden;
+    }
+
+    .gen-btn {
+      background: #f0ede8;
+      color: #0c0c0f;
+      border: none;
+      padding: 14px 40px;
+      font-family: 'DM Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+    }
+    .gen-btn:hover { background: #d4b896; transform: translateY(-2px); }
+    .gen-btn:active { transform: translateY(0); }
+    .gen-btn:disabled { background: #2a2a35; color: #444; cursor: not-allowed; transform: none; }
+
+    .cat-toggle {
+      border: 1px solid #2a2a35;
+      background: #131318;
+      cursor: pointer;
+      transition: all 0.18s;
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      user-select: none;
+    }
+    .cat-toggle:hover { border-color: #444; background: #1a1a22; }
+    .cat-toggle.on { border-color: #4a4a60; background: #1c1c28; }
+
+    .count-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1.5px solid #333;
+      background: transparent;
+      color: #888;
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .count-btn:hover { border-color: #666; color: #ccc; }
+    .count-btn.active { border-color: #f0ede8; background: #f0ede8; color: #0c0c0f; font-weight: 500; }
+
+    .result-card {
+      opacity: 0;
+      transform: translateY(20px) scale(0.92);
+      transition: all 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .result-card.show { opacity: 1; transform: translateY(0) scale(1); }
+
+    .shake { animation: shake 0.45s ease; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20% { transform: translateX(-6px) rotate(-1deg); }
+      40% { transform: translateX(6px) rotate(1deg); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+
+    .noise-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+      z-index: 0;
+    }
+
+    .divider { border: none; border-top: 1px solid #1e1e28; }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    .cat-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .count-row { display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+    .count-btns { display: flex; gap: 8px; }
+
+    .results-grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .card-inner {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .seed-bar {
+      margin-top: 20px;
+      padding: 14px 18px;
+      background: #0f0f14;
+      border: 1px solid #1e1e28;
+      border-radius: 4px;
+      font-family: 'Playfair Display', serif;
+      font-style: italic;
+      font-size: 15px;
+      color: #666;
+      letter-spacing: 0.02em;
+      word-break: break-word;
+    }
+
+    @media (max-width: 480px) {
+      .wrap { padding: 32px 16px 60px; }
+      .count-row { gap: 16px; }
+    }
+
+    /* Twemoji images inherit font-size so they scale naturally */
+    img.emoji {
+      height: 1em;
+      width: 1em;
+      vertical-align: -0.1em;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback, useEffect } = React;
+
+    const CATEGORIES = {
+      animals: {
+        label: "🐾 Animals", color: "#a8e6a3",
+        emojis: [
+          { e: "🐱", n: "Cat" }, { e: "🐶", n: "Dog" }, { e: "🦊", n: "Fox" },
+          { e: "🐺", n: "Wolf" }, { e: "🐻", n: "Bear" }, { e: "🐼", n: "Panda" },
+          { e: "🐨", n: "Koala" }, { e: "🐯", n: "Tiger" }, { e: "🦁", n: "Lion" },
+          { e: "🐮", n: "Cow" }, { e: "🐷", n: "Pig" }, { e: "🐸", n: "Frog" },
+          { e: "🐙", n: "Octopus" }, { e: "🦑", n: "Squid" }, { e: "🦈", n: "Shark" },
+          { e: "🐊", n: "Crocodile" }, { e: "🦎", n: "Lizard" }, { e: "🐢", n: "Turtle" },
+          { e: "🐍", n: "Snake" }, { e: "🦋", n: "Butterfly" }, { e: "🐝", n: "Bee" },
+          { e: "🕷️", n: "Spider" }, { e: "🦅", n: "Eagle" }, { e: "🦉", n: "Owl" },
+          { e: "🦇", n: "Bat" }, { e: "🦜", n: "Parrot" }, { e: "🐧", n: "Penguin" },
+          { e: "🦚", n: "Peacock" }, { e: "🦩", n: "Flamingo" }, { e: "🐇", n: "Rabbit" },
+          { e: "🦝", n: "Raccoon" }, { e: "🦦", n: "Otter" }, { e: "🦨", n: "Skunk" },
+          { e: "🦡", n: "Badger" }, { e: "🦫", n: "Beaver" }, { e: "🐿️", n: "Chipmunk" },
+          { e: "🦔", n: "Hedgehog" }, { e: "🐉", n: "Dragon" }, { e: "🦕", n: "Sauropod" },
+          { e: "🦖", n: "T-Rex" }, { e: "🐬", n: "Dolphin" }, { e: "🐳", n: "Whale" },
+          { e: "🦭", n: "Seal" }, { e: "🦧", n: "Orangutan" }, { e: "🐒", n: "Monkey" },
+          { e: "🐘", n: "Elephant" }, { e: "🦏", n: "Rhino" }, { e: "🦛", n: "Hippo" },
+          { e: "🦙", n: "Llama" }, { e: "🦘", n: "Kangaroo" }, { e: "🦓", n: "Zebra" },
+        ],
+      },
+      fantasy: {
+        label: "✨ Fantasy & Mythical", color: "#c9b8f5",
+        emojis: [
+          { e: "🧙", n: "Wizard" }, { e: "🧝", n: "Elf" }, { e: "🧛", n: "Vampire" },
+          { e: "🧜", n: "Mermaid" }, { e: "🧟", n: "Zombie" }, { e: "🧞", n: "Genie" },
+          { e: "🧚", n: "Fairy" }, { e: "🦄", n: "Unicorn" }, { e: "👹", n: "Oni Demon" },
+          { e: "👺", n: "Goblin" }, { e: "👻", n: "Ghost" }, { e: "💀", n: "Skull" },
+          { e: "👾", n: "Alien Monster" }, { e: "👽", n: "Alien" }, { e: "🤖", n: "Robot" },
+          { e: "🧌", n: "Troll" }, { e: "🐲", n: "Dragon Face" },
+        ],
+      },
+      jobs: {
+        label: "⚒️ Roles & Professions", color: "#f5c89b",
+        emojis: [
+          { e: "🧑‍🍳", n: "Chef" }, { e: "🧑‍🎤", n: "Rockstar" }, { e: "👮", n: "Officer" },
+          { e: "👷", n: "Builder" }, { e: "🕵️", n: "Detective" }, { e: "💂", n: "Guard" },
+          { e: "🧑‍🔬", n: "Scientist" }, { e: "🧑‍🎨", n: "Artist" }, { e: "🧑‍💻", n: "Hacker" },
+          { e: "🧑‍🚀", n: "Astronaut" }, { e: "🧑‍⚕️", n: "Doctor" }, { e: "🧑‍🌾", n: "Farmer" },
+          { e: "🧑‍🏫", n: "Teacher" }, { e: "🧑‍⚖️", n: "Judge" }, { e: "🧑‍✈️", n: "Pilot" },
+          { e: "🧑‍🚒", n: "Firefighter" }, { e: "🧑‍🔧", n: "Mechanic" }, { e: "🤺", n: "Fencer" },
+          { e: "🧗", n: "Climber" }, { e: "🤸", n: "Gymnast" }, { e: "🥷", n: "Ninja" },
+          { e: "🤴", n: "Prince" }, { e: "👸", n: "Princess" }, { e: "🤵", n: "Butler" },
+          { e: "🧖", n: "Mystic Healer" }, { e: "🧘", n: "Monk" },
+        ],
+      },
+      clothing: {
+        label: "👗 Clothing & Style", color: "#f5a8c8",
+        emojis: [
+          { e: "👑", n: "Crown" }, { e: "🎩", n: "Top Hat" }, { e: "👒", n: "Sun Hat" },
+          { e: "🧢", n: "Cap" }, { e: "⛑️", n: "Helmet" }, { e: "👓", n: "Glasses" },
+          { e: "🕶️", n: "Sunglasses" }, { e: "🥽", n: "Goggles" }, { e: "🧣", n: "Scarf" },
+          { e: "🧤", n: "Gloves" }, { e: "🧥", n: "Coat" }, { e: "👔", n: "Suit" },
+          { e: "👗", n: "Dress" }, { e: "👘", n: "Kimono" }, { e: "🥻", n: "Sari" },
+          { e: "🦺", n: "Vest" }, { e: "👠", n: "High Heel" }, { e: "👢", n: "Boot" },
+          { e: "🥾", n: "Hiking Boot" }, { e: "👟", n: "Sneaker" }, { e: "💍", n: "Ring" },
+          { e: "📿", n: "Beads" }, { e: "💎", n: "Gem" }, { e: "👜", n: "Handbag" },
+          { e: "🎀", n: "Bow" }, { e: "🪖", n: "Military Helmet" },
+        ],
+      },
+      weapons: {
+        label: "⚔️ Weapons & Combat", color: "#f59b9b",
+        emojis: [
+          { e: "⚔️", n: "Crossed Swords" }, { e: "🗡️", n: "Dagger" }, { e: "🔱", n: "Trident" },
+          { e: "🏹", n: "Bow & Arrow" }, { e: "🛡️", n: "Shield" }, { e: "🪃", n: "Boomerang" },
+          { e: "💣", n: "Bomb" }, { e: "🔫", n: "Pistol" }, { e: "🪓", n: "Axe" },
+          { e: "⛏️", n: "Pickaxe" }, { e: "🔨", n: "Hammer" }, { e: "🪚", n: "Saw" },
+          { e: "🧨", n: "Firecracker" }, { e: "💥", n: "Explosion" },
+        ],
+      },
+      magic: {
+        label: "🔮 Magic & Mystery", color: "#a8c4f5",
+        emojis: [
+          { e: "🔮", n: "Crystal Ball" }, { e: "🪄", n: "Magic Wand" }, { e: "🧿", n: "Evil Eye" },
+          { e: "🪬", n: "Hamsa" }, { e: "⭐", n: "Star" }, { e: "🌟", n: "Glowing Star" },
+          { e: "✨", n: "Sparkles" }, { e: "🌠", n: "Shooting Star" }, { e: "🌀", n: "Swirl" },
+          { e: "☄️", n: "Comet" }, { e: "🌌", n: "Milky Way" }, { e: "🫧", n: "Bubbles" },
+          { e: "💫", n: "Dizzy Star" }, { e: "🕯️", n: "Candle" }, { e: "🔥", n: "Fire" },
+          { e: "❄️", n: "Ice Crystal" }, { e: "💧", n: "Water Drop" }, { e: "🌊", n: "Wave" },
+          { e: "🌪️", n: "Tornado" }, { e: "⚗️", n: "Potion Flask" }, { e: "🧪", n: "Test Tube" },
+          { e: "💊", n: "Pill" }, { e: "🩸", n: "Blood Drop" }, { e: "⚡", n: "Lightning" },
+        ],
+      },
+      nature: {
+        label: "🌿 Nature & Elements", color: "#a8e6c3",
+        emojis: [
+          { e: "🌸", n: "Cherry Blossom" }, { e: "🌹", n: "Rose" }, { e: "🌻", n: "Sunflower" },
+          { e: "🍀", n: "Four-Leaf Clover" }, { e: "🌿", n: "Herb" }, { e: "🌵", n: "Cactus" },
+          { e: "🍄", n: "Mushroom" }, { e: "🪸", n: "Coral" }, { e: "🌋", n: "Volcano" },
+          { e: "🏔️", n: "Mountain" }, { e: "🏜️", n: "Desert" }, { e: "🌲", n: "Pine Tree" },
+          { e: "🎋", n: "Bamboo" }, { e: "🍁", n: "Maple Leaf" }, { e: "🌙", n: "Crescent Moon" },
+          { e: "☀️", n: "Sun" }, { e: "🌈", n: "Rainbow" }, { e: "🌑", n: "New Moon" },
+          { e: "🪨", n: "Rock" }, { e: "🧊", n: "Ice Cube" }, { e: "🌺", n: "Hibiscus" },
+          { e: "🪷", n: "Lotus" }, { e: "🌾", n: "Wheat" },
+        ],
+      },
+      food: {
+        label: "🍓 Food & Vibes", color: "#f5e6a8",
+        emojis: [
+          { e: "🍓", n: "Strawberry" }, { e: "🍒", n: "Cherries" }, { e: "🍑", n: "Peach" },
+          { e: "🍋", n: "Lemon" }, { e: "🍎", n: "Apple" }, { e: "🍇", n: "Grapes" },
+          { e: "🫐", n: "Blueberry" }, { e: "🍰", n: "Cake" }, { e: "🍩", n: "Donut" },
+          { e: "🍭", n: "Lollipop" }, { e: "🍬", n: "Candy" }, { e: "🍫", n: "Chocolate" },
+          { e: "🧁", n: "Cupcake" }, { e: "🍦", n: "Ice Cream" }, { e: "☕", n: "Coffee" },
+          { e: "🍵", n: "Tea" }, { e: "🧋", n: "Bubble Tea" }, { e: "🍺", n: "Beer" },
+          { e: "🍷", n: "Wine" }, { e: "🥃", n: "Whiskey" }, { e: "🍜", n: "Noodles" },
+          { e: "🍣", n: "Sushi" }, { e: "🌮", n: "Taco" }, { e: "🍕", n: "Pizza" },
+          { e: "🧇", n: "Waffle" }, { e: "🍯", n: "Honey" },
+        ],
+      },
+      vibes: {
+        label: "💢 Personality & Vibes", color: "#f5d0a8",
+        emojis: [
+          { e: "💢", n: "Anger" }, { e: "❤️‍🔥", n: "Heart on Fire" }, { e: "💔", n: "Broken Heart" },
+          { e: "🖤", n: "Black Heart" }, { e: "💜", n: "Purple Heart" }, { e: "💚", n: "Green Heart" },
+          { e: "🤍", n: "White Heart" }, { e: "🩷", n: "Pink Heart" }, { e: "🩸", n: "Blood" },
+          { e: "👁️", n: "Eye" }, { e: "🫀", n: "Heart Organ" }, { e: "🧠", n: "Brain" },
+          { e: "💭", n: "Thought Bubble" }, { e: "🌫️", n: "Fog" }, { e: "🕳️", n: "Hole" },
+          { e: "🎭", n: "Theater Masks" }, { e: "🃏", n: "Joker Card" }, { e: "🎲", n: "Dice" },
+          { e: "♟️", n: "Chess Pawn" }, { e: "🪩", n: "Mirror Ball" }, { e: "🫖", n: "Teapot" },
+          { e: "🕰️", n: "Clock" }, { e: "⏳", n: "Hourglass" },
+        ],
+      },
+      objects: {
+        label: "🎸 Objects & Props", color: "#a8d4f5",
+        emojis: [
+          { e: "🎸", n: "Guitar" }, { e: "🎹", n: "Piano" }, { e: "🎺", n: "Trumpet" },
+          { e: "🎻", n: "Violin" }, { e: "🥁", n: "Drums" }, { e: "🪗", n: "Accordion" },
+          { e: "📚", n: "Books" }, { e: "📜", n: "Scroll" }, { e: "🗺️", n: "Map" },
+          { e: "🔭", n: "Telescope" }, { e: "🔬", n: "Microscope" }, { e: "💻", n: "Laptop" },
+          { e: "📷", n: "Camera" }, { e: "🎬", n: "Clapperboard" }, { e: "🎮", n: "Controller" },
+          { e: "🎯", n: "Target" }, { e: "🎪", n: "Circus Tent" }, { e: "🧩", n: "Puzzle" },
+          { e: "🛹", n: "Skateboard" }, { e: "🏍️", n: "Motorcycle" }, { e: "⚓", n: "Anchor" },
+          { e: "🧲", n: "Magnet" }, { e: "🔑", n: "Key" }, { e: "🗝️", n: "Old Key" },
+          { e: "🪞", n: "Mirror" }, { e: "🖼️", n: "Painting" }, { e: "🧸", n: "Teddy Bear" },
+          { e: "🪆", n: "Nesting Doll" }, { e: "🪅", n: "Piñata" }, { e: "🎨", n: "Palette" },
+        ],
+      },
+    };
+
+    const COUNT_OPTIONS = [1, 2, 3, 4, 5];
+
+    function App() {
+      const [enabledCats, setEnabledCats] = useState(
+        Object.fromEntries(Object.keys(CATEGORIES).map((k) => [k, true]))
+      );
+      const [count, setCount] = useState(3);
+      const [results, setResults] = useState([]);
+      const [shaking, setShaking] = useState(false);
+      const [revealed, setRevealed] = useState([]);
+      const [hoveredCard, setHoveredCard] = useState(null);
+
+      const toggleCat = (key) => {
+        setEnabledCats((prev) => ({ ...prev, [key]: !prev[key] }));
+      };
+
+      // Build a pool from enabled categories
+      const buildPool = useCallback(() => {
+        const pool = [];
+        Object.entries(CATEGORIES).forEach(([key, cat]) => {
+          if (enabledCats[key]) cat.emojis.forEach((em) => pool.push({ ...em, cat: key }));
+        });
+        return pool;
+      }, [enabledCats]);
+
+      // Pick N unique items from pool respecting category cap
+      const pickFromPool = (pool, n, excludeEmojis = new Set(), catCap = 1) => {
+        const shuffled = [...pool].sort(() => Math.random() - 0.5);
+        const picked = [];
+        const catCount = {};
+        for (const item of shuffled) {
+          if (!excludeEmojis.has(item.e) && (catCount[item.cat] || 0) < catCap) {
+            catCount[item.cat] = (catCount[item.cat] || 0) + 1;
+            picked.push(item);
+            if (picked.length === n) break;
+          }
+        }
+        return picked;
+      };
+
+      const generate = useCallback(() => {
+        const pool = buildPool();
+        if (pool.length < count) return;
+        const catCap = count <= 3 ? 1 : 2;
+        const picked = pickFromPool(pool, count, new Set(), catCap);
+
+        setShaking(true);
+        setRevealed([]);
+        setTimeout(() => setShaking(false), 500);
+        picked.forEach((_, i) => {
+          setTimeout(() => setRevealed((prev) => [...prev, i]), 300 + i * 160);
+        });
+        setResults(picked);
+      }, [enabledCats, count, buildPool]);
+
+      const reloadCard = useCallback((index) => {
+        setResults((prev) => {
+          const pool = buildPool();
+          const catCap = prev.length <= 3 ? 1 : 2;
+          // Exclude all current emojis except the one being replaced
+          const excluded = new Set(prev.filter((_, i) => i !== index).map(r => r.e));
+          // Also respect category cap: count how many of each cat remain (excluding slot being replaced)
+          const remainingCatCount = {};
+          prev.forEach((r, i) => { if (i !== index) remainingCatCount[r.cat] = (remainingCatCount[r.cat] || 0) + 1; });
+          // Filter pool to valid candidates
+          const candidates = pool.filter(item =>
+            !excluded.has(item.e) &&
+            (remainingCatCount[item.cat] || 0) < catCap
+          );
+          if (candidates.length === 0) return prev;
+          const replacement = candidates[Math.floor(Math.random() * candidates.length)];
+          const next = [...prev];
+          next[index] = replacement;
+          return next;
+        });
+      }, [buildPool]);
+
+      const deleteCard = useCallback((index) => {
+        setResults((prev) => prev.filter((_, i) => i !== index));
+        setRevealed((prev) => prev.filter(i => i !== index).map(i => i > index ? i - 1 : i));
+      }, []);
+
+      const enabledCount = Object.values(enabledCats).filter(Boolean).length;
+      const totalPool = Object.entries(CATEGORIES).reduce(
+        (sum, [k, cat]) => sum + (enabledCats[k] ? cat.emojis.length : 0), 0
+      );
+
+      // Re-parse Twemoji after every render so new emojis get converted to images
+      useEffect(() => {
+        twemoji.parse(document.getElementById('root'), {
+          folder: 'svg',
+          ext: '.svg',
+          base: 'https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/',
+        });
+      });
+
+      return (
+        <div>
+          <div className="noise-overlay" />
+          <div className="wrap">
+
+            {/* Header */}
+            <div style={{ marginBottom: 48 }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, letterSpacing: "0.25em", color: "#555", textTransform: "uppercase", marginBottom: 12 }}>
+                Character Design Tool
+              </div>
+              <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(36px, 8vw, 64px)", fontWeight: 900, fontStyle: "italic", lineHeight: 0.95, letterSpacing: "-0.02em", color: "#f0ede8" }}>
+                Emoji<br />
+                <span style={{ color: "#8b7355" }}>Oracle</span>
+              </h1>
+              <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, color: "#555", marginTop: 16, lineHeight: 1.7, letterSpacing: "0.04em" }}>
+                Roll for character inspiration. No repeats. No noise.
+              </p>
+            </div>
+
+            <hr className="divider" style={{ marginBottom: 36 }} />
+
+            {/* Categories */}
+            <div style={{ marginBottom: 32 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.12em", color: "#888", textTransform: "uppercase" }}>
+                  Categories
+                </span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#444", letterSpacing: "0.08em" }}>
+                  {enabledCount}/{Object.keys(CATEGORIES).length} on · {totalPool} emojis in pool
+                </span>
+              </div>
+              <div className="cat-grid">
+                {Object.entries(CATEGORIES).map(([key, cat]) => {
+                  const on = enabledCats[key];
+                  return (
+                    <button key={key} className={`cat-toggle ${on ? "on" : ""}`} onClick={() => toggleCat(key)} style={{ color: on ? cat.color : "#444" }}>
+                      <span style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: on ? cat.color : "#2a2a35",
+                        display: "inline-block", flexShrink: 0,
+                        boxShadow: on ? `0 0 6px ${cat.color}55` : "none",
+                        transition: "all 0.2s",
+                      }} />
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <hr className="divider" style={{ marginBottom: 32 }} />
+
+            {/* Count & Generate */}
+            <div style={{ marginBottom: 40 }}>
+              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.12em", color: "#888", textTransform: "uppercase", marginBottom: 14 }}>
+                How many traits?
+              </div>
+              <div className="count-row">
+                <div className="count-btns">
+                  {COUNT_OPTIONS.map((n) => (
+                    <button key={n} className={`count-btn ${count === n ? "active" : ""}`} onClick={() => setCount(n)}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <button className={`gen-btn ${shaking ? "shake" : ""}`} onClick={generate} disabled={totalPool < count}>
+                  ⬡ Roll
+                </button>
+              </div>
+              {totalPool < count && (
+                <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#8b4040", marginTop: 10 }}>
+                  Enable more categories to roll {count} traits.
+                </p>
+              )}
+            </div>
+
+            {/* Results */}
+            {results.length > 0 && (
+              <div>
+                <hr className="divider" style={{ marginBottom: 32 }} />
+                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, letterSpacing: "0.12em", color: "#555", textTransform: "uppercase", marginBottom: 20 }}>
+                  Character Seed
+                </div>
+                <div className="results-grid" style={{ gridTemplateColumns: `repeat(${Math.min(results.length, 5)}, 1fr)` }}>
+                  {results.map((item, i) => {
+                    const catColor = CATEGORIES[item.cat]?.color || "#888";
+                    const isHovered = hoveredCard === i;
+                    return (
+                      <div
+                        key={item.e + i}
+                        className={`result-card ${revealed.includes(i) ? "show" : ""}`}
+                        onMouseEnter={() => setHoveredCard(i)}
+                        onMouseLeave={() => setHoveredCard(null)}
+                        style={{
+                          background: "#0f0f14",
+                          border: "1px solid #222",
+                          borderTop: `2px solid ${catColor}66`,
+                          borderRadius: 6,
+                          padding: "20px 16px 18px",
+                          textAlign: "center",
+                          position: "relative",
+                          overflow: "hidden",
+                          transition: "border-color 0.2s",
+                          borderColor: isHovered ? "#333" : "#222",
+                        }}>
+                        <div style={{
+                          position: "absolute", inset: 0,
+                          background: `radial-gradient(ellipse at 50% 0%, ${catColor}12 0%, transparent 70%)`,
+                          pointerEvents: "none",
+                        }} />
+                        {/* Hover action buttons */}
+                        <div style={{
+                          position: "absolute", top: 6, left: 6,
+                          display: "flex", gap: 4,
+                          opacity: isHovered ? 1 : 0,
+                          transition: "opacity 0.15s",
+                          zIndex: 2,
+                        }}>
+                          <button
+                            onClick={() => reloadCard(i)}
+                            title="Reroll this trait"
+                            style={{
+                              width: 24, height: 24, borderRadius: 4,
+                              border: "1px solid #333", background: "#1a1a22",
+                              color: "#aaa", fontSize: 11, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s", lineHeight: 1,
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#2a2a38"; e.currentTarget.style.color = "#fff"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#1a1a22"; e.currentTarget.style.color = "#aaa"; }}
+                          >🔄</button>
+                          <button
+                            onClick={() => deleteCard(i)}
+                            title="Remove this trait"
+                            style={{
+                              width: 24, height: 24, borderRadius: 4,
+                              border: "1px solid #333", background: "#1a1a22",
+                              color: "#aaa", fontSize: 11, cursor: "pointer",
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              transition: "all 0.15s", lineHeight: 1,
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = "#2a1a1a"; e.currentTarget.style.color = "#f88"; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "#1a1a22"; e.currentTarget.style.color = "#aaa"; }}
+                          >✕</button>
+                        </div>
+                        <div style={{ fontSize: "clamp(32px, 6vw, 48px)", lineHeight: 1, marginBottom: 12 }}>{item.e}</div>
+                        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "clamp(11px, 2vw, 14px)", fontWeight: 700, color: "#f0ede8", marginBottom: 6, letterSpacing: "0.01em" }}>
+                          {item.n}
+                        </div>
+                        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: catColor, textTransform: "uppercase", letterSpacing: "0.1em", opacity: 0.8 }}>
+                          {CATEGORIES[item.cat]?.label.replace(/^.+?\s/, "")}
+                        </div>
+                        <div style={{ position: "absolute", top: 8, right: 10, fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#333" }}>
+                          {String(i + 1).padStart(2, "0")}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div key={results.map(r => r.e).join('')} className="seed-bar">
+                  {results.map(r => r.e).join(" ")}
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, marginLeft: 14, color: "#333", fontStyle: "normal" }}>
+                    {results.map(r => r.n).join(" · ")}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 60, fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#2e2e3a", letterSpacing: "0.08em", textAlign: "center" }}>
+              Each roll is unique — no emoji repeats within a session
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
